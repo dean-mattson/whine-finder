@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Whine Finder">
+<meta name="theme-color" content="#0e1520">
+<title>Whine Finder</title>
+<style>
+/* Layout: single instrument column, readout first, tabs for Hunt / Log / Results / How-to */
+:root{
+  --bg:#0e1520; --panel:#16202d; --panel2:#1c2838; --line:#2a3a4e;
+  --fg:#e7edf4; --muted:#8c9db2; --amber:#ffb441; --hot:#ff5d4f; --cool:#53b6ff; --good:#5cd18c;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;-webkit-text-size-adjust:100%}
+body{padding-top:env(safe-area-inset-top,0px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;letter-spacing:.01em}
+h1 span{color:var(--amber)}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+h3{font-size:15px;margin:14px 0 6px}
+.status{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+button,select,input{font:inherit;color:var(--fg)}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer;touch-action:manipulation}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+button.primary{background:var(--amber);color:#1a1200;border-color:var(--amber);font-weight:700}
+button.danger{border-color:var(--hot);color:var(--hot)}
+button:disabled{opacity:.45;cursor:default}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.row > *{min-width:0}
+.grow{flex:1 1 160px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.hidden{display:none!important}
+
+/* start screen */
+.start{display:flex;flex-direction:column;gap:10px}
+.start p{margin:0;line-height:1.45;color:var(--muted)}
+
+/* readout */
+.readout{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:end}
+.big{font-family:var(--mono);font-size:56px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.big small{font-size:18px;color:var(--muted);font-weight:500;margin-left:4px}
+.snr{font-family:var(--mono);font-size:18px;text-align:right}
+.tgt{font-family:var(--mono);font-size:14px;color:var(--muted)}
+.tgt b{color:var(--amber);font-weight:600}
+.meter{height:10px;background:var(--bg);border-radius:5px;overflow:hidden;grid-column:1/-1;border:1px solid var(--line)}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cool),var(--amber),var(--hot));transition:width .1s linear}
+
+canvas{display:block;width:100%;touch-action:manipulation}
+#spec{height:130px;border-radius:8px 8px 0 0;background:var(--bg)}
+#wf{height:120px;border-radius:0 0 8px 8px;background:#000}
+#tl{height:150px;border-radius:8px;background:var(--bg)}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{font-family:var(--mono);font-size:13px;padding:6px 10px;border-radius:16px;background:var(--panel2);border:1px solid var(--line)}
+.chip.on{border-color:var(--amber);color:var(--amber)}
+.chip em{font-style:normal;color:var(--muted);margin-left:4px}
+
+.tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 4px;color:var(--muted);font-weight:600}
+.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--fg)}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tablewrap{overflow-x:auto}
+.bar{height:8px;border-radius:4px;background:var(--amber);min-width:2px}
+.delta-down{color:var(--good)} .delta-up{color:var(--hot)}
+.rec-progress{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+.rec-progress i{display:block;height:100%;width:0;background:var(--hot)}
+.badge{display:inline-block;font-size:11px;padding:2px 6px;border-radius:4px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+.guide p,.guide li{line-height:1.5;max-width:65ch}
+.guide ol{padding-left:20px}
+.notice{border-left:3px solid var(--amber);padding:8px 10px;background:var(--panel2);border-radius:6px;font-size:14px;line-height:1.45}
+.err{border-left-color:var(--hot)}
+@media (prefers-reduced-motion: reduce){.meter i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Whine <span>Finder</span></h1>
+    <div class="status" id="status">mic off</div>
+  </header>
+
+  <!-- Start -->
+  <section class="panel start" id="startPanel">
+    <p>Finds the exact pitch of a whine, then measures only that pitch. Background noise like HVAC, talking and music no longer swamps the reading, so you can tell which shelf it comes from.</p>
+    <div class="row">
+      <button class="primary" id="btnStart">Start microphone</button>
+      <button id="btnDemo">Try with a simulated whine</button>
+    </div>
+    <div id="startErr" class="notice err hidden"></div>
+  </section>
+
+  <!-- Live analysis (always visible once running) -->
+  <section class="panel hidden" id="livePanel">
+    <div class="readout">
+      <div>
+        <div class="big" id="lvl">––<small>dB</small></div>
+        <div class="tgt" id="tgtLine">Tap a peak below to lock the whine</div>
+      </div>
+      <div>
+        <div class="snr" id="snr">–</div>
+        <div class="small muted" style="text-align:right">above background</div>
+      </div>
+      <div class="meter"><i id="meterFill"></i></div>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="specPanel">
+    <h2>Spectrum <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· tap a peak to lock it</span></h2>
+    <canvas id="spec"></canvas>
+    <canvas id="wf"></canvas>
+    <div class="row" style="margin-top:8px;justify-content:space-between">
+      <div class="small muted" id="candHead">Tones standing out from the background:</div>
+      <div class="row">
+        <button id="btnScale" class="small">Linear scale</button>
+        <button id="btnTone" class="small" disabled>Play target tone</button>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="demoCtl" class="row hidden" style="margin-top:10px">
+      <label class="grow">Simulated distance from the whining device: <span id="distV" class="mono">2.0 m</span>
+        <input type="range" id="dist" min="0.1" max="8" step="0.1" value="2">
+      </label>
+    </div>
+  </section>
+
+  <nav class="tabs hidden" id="tabs" role="tablist">
+    <button role="tab" data-tab="hunt" aria-selected="true">Hunt</button>
+    <button role="tab" data-tab="log" aria-selected="false">Log spots</button>
+    <button role="tab" data-tab="results" aria-selected="false">Results</button>
+    <button role="tab" data-tab="guide" aria-selected="false">How to</button>
+  </nav>
+
+  <!-- HUNT -->
+  <section class="panel tab" id="tab-hunt">
+    <h2>Level of the locked tone over time</h2>
+    <canvas id="tl"></canvas>
+    <div class="row" style="margin-top:6px;justify-content:space-between">
+      <div class="row">
+        <button class="small" data-span="60">1 min</button>
+        <button class="small" data-span="300">5 min</button>
+        <button class="small" data-span="600">10 min</button>
+      </div>
+      <span class="small muted mono" id="tlRange"></span>
+    </div>
+    <h3>Switch-off test</h3>
+    <p class="small muted" style="margin:0 0 8px">Leave the phone in one spot. Tap Mark right as you switch a device off (or on). The app compares the 10 seconds before with the 10 seconds after. A big drop means you found it.</p>
+    <div class="row">
+      <label class="grow">What did you change?<input id="markLabel" placeholder="e.g. UPS in rack 2 off"></label>
+      <button class="primary" id="btnMark" disabled>Mark</button>
+    </div>
+    <div class="tablewrap" style="margin-top:8px">
+      <table id="markTable"><thead><tr><th>Change</th><th class="num">Time</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section class="panel tab hidden" id="tab-log">
+    <h2>Record a spot</h2>
+    <p class="small muted" style="margin:0 0 10px">Set the phone on a shelf with the bottom (where the mic is) facing the same way each time. Recording starts after a 5-second countdown so you can step away.</p>
+    <div class="row">
+      <label class="grow">Location<input id="locName" placeholder="e.g. Rack 2, shelf 3 (behind UPS)"></label>
+      <label>Length
+        <select id="recDur">
+          <option value="30">30 sec</option>
+          <option value="120" selected>2 min</option>
+          <option value="300">5 min</option>
+          <option value="900">15 min</option>
+          <option value="3600">1 hour</option>
+        </select>
+      </label>
+      <button class="primary" id="btnRec" disabled>Record</button>
+      <button id="btnRecStop" class="danger hidden">Stop</button>
+    </div>
+    <div id="recBox" class="hidden" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between"><span id="recMsg" class="mono"></span><span id="recStats" class="mono small muted"></span></div>
+      <div class="rec-progress" style="margin-top:6px"><i id="recFill"></i></div>
+    </div>
+    <p id="recNeedTarget" class="notice" style="margin-top:12px">Lock a tone first: tap its peak in the spectrum above.</p>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="panel tab hidden" id="tab-results">
+    <h2>Spots ranked loudest first</h2>
+    <div id="resultsBody"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnExport">Share CSV</button>
+      <button id="btnCopy">Copy as text</button>
+      <button id="btnClear" class="danger">Clear all</button>
+      <button id="btnClearYes" class="danger hidden">Yes, delete every result</button>
+    </div>
+    <p class="small muted" id="exportMsg"></p>
+  </section>
+
+  <!-- GUIDE -->
+  <section class="panel tab hidden guide" id="tab-guide">
+    <h2>How to find the source</h2>
+    <ol>
+      <li><b>Find the pitch.</b> Stand where the whine is loudest and start the mic. The whine shows as a thin vertical line in the waterfall and a sharp peak in the spectrum. Tap it to lock it. Use <i>Play target tone</i> to make sure it is the sound you hear (keep the volume low).</li>
+      <li><b>Hunt.</b> Walk slowly with the phone, holding it the same way, and bring the bottom of the phone within a few inches of each device: power supplies, UPS units, power bricks, monitors, LED drivers, transmitter and amp gear. The level climbs roughly 6 dB each time you halve the distance. Near the source it jumps sharply.</li>
+      <li><b>Log spots.</b> If the whine comes and goes, or you want a record, leave the phone on each shelf for a few minutes with <i>Log spots</i>. Results ranks them for the locked tone.</li>
+      <li><b>Prove it.</b> Put the phone next to the suspect, then switch things off one at a time (only gear that's safe to drop off air) and tap <i>Mark</i> each time. If the level falls to the background, that's the source.</li>
+    </ol>
+    <h3>Things that throw readings off</h3>
+    <ul>
+      <li>High pitches bounce off walls and racks, so a spot across the room can read loud. Trust readings taken close up, and the switch-off test most of all.</li>
+      <li>Only compare numbers taken with the same phone and the same locked tone. The dB values are relative, not a calibrated sound level meter.</li>
+      <li>Keep talking and footsteps to a minimum during a recording.</li>
+      <li>The screen stays on while the app runs. If the phone locks, iPhone stops the microphone, and the recording is marked with a gap.</li>
+      <li>Older ears often can't hear above about 12–15 kHz. If one person hears it and another doesn't, it is probably high.</li>
+    </ul>
+    <h3>Settings</h3>
+    <div class="row">
+      <label>Lowest pitch to search (Hz)<input id="setMin" type="number" inputmode="numeric" value="1000"></label>
+      <label>Highest (Hz)<input id="setMax" type="number" inputmode="numeric" value="22000"></label>
+      <label>Allow drift ± (Hz)<input id="setTrack" type="number" inputmode="numeric" value="40"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="grow">Lock a pitch by number (Hz)<input id="setTarget" type="number" inputmode="decimal" placeholder="e.g. 15734"></label>
+      <button id="btnSetTarget">Lock</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const LS_RES = "whinefinder.results.v1", LS_SET = "whinefinder.settings.v1";
+
+const S = {
+  ctx:null, an:null, stream:null, demo:null, running:false,
+  sr:48000, N:0, binHz:1, spec:null, fast:null, slow:null,
+  target:null, fmin:1000, fmax:22000, trackHz:40,
+  hist:[], markers:[], cands:[], cur:null, span:60,
+  rec:null, wake:null, muteUntil:0, tick:0, logScale:true, gapFlag:false,
+  peakLv:-Infinity
+};
+
+/* ---------- storage ---------- */
+function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+let results = load(LS_RES, []);
+const set0 = load(LS_SET, null);
+if (set0){ S.fmin = set0.fmin ?? S.fmin; S.fmax = set0.fmax ?? S.fmax; S.trackHz = set0.trackHz ?? S.trackHz; if (set0.target) S.target = set0.target; }
+$("#setMin").value = S.fmin; $("#setMax").value = S.fmax; $("#setTrack").value = S.trackHz;
+function saveSettings(){ save(LS_SET, {fmin:S.fmin, fmax:S.fmax, trackHz:S.trackHz, target:S.target}); }
+
+/* ---------- formatting ---------- */
+const fmtF = f => f == null ? "–" : (f >= 1000 ? (f/1000).toFixed(f >= 10000 ? 2 : 3) + " kHz" : Math.round(f) + " Hz");
+const fmtHz = f => Math.round(f).toLocaleString() + " Hz";
+const fmtDb = v => (v == null || !isFinite(v)) ? "–" : v.toFixed(1);
+const fmtSigned = v => (v == null || !isFinite(v)) ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+const clock = t => new Date(t).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"});
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function median(a){ if(!a.length) return null; const b = a.slice().sort((x,y)=>x-y); const m = b.length>>1; return b.length%2 ? b[m] : (b[m-1]+b[m])/2; }
+function pct(a, p){ if(!a.length) return null; const b = a.slice().sort((x,y)=>x-y); return b[Math.min(b.length-1, Math.floor(p*(b.length-1)+.5))]; }
+
+/* ---------- audio start ---------- */
+async function start(demo){
+  $("#startErr").classList.add("hidden");
+  let ctx;
+  try{
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser();
+    an.fftSize = 16384; an.smoothingTimeConstant = 0;
+    // Safari only runs an analyser that is pulled by the destination: route through a silent gain.
+    const mute = ctx.createGain(); mute.gain.value = 0;
+    an.connect(mute); mute.connect(ctx.destination);
+    if (demo){
+      S.demo = makeDemo(ctx, an);
+    } else {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+        throw new Error("This browser can't use the microphone here. Open the page over https:// in Safari or Chrome.");
+      const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}, video:false});
+      S.stream = stream;
+      ctx.createMediaStreamSource(stream).connect(an);
+    }
+    await ctx.resume();
+    S.ctx = ctx; S.an = an; S.sr = ctx.sampleRate; S.N = an.frequencyBinCount; S.binHz = S.sr / an.fftSize;
+    S.spec = new Float32Array(S.N); S.fast = new Float64Array(S.N); S.slow = new Float64Array(S.N);
+    S.fmax = Math.min(S.fmax, Math.floor(S.sr/2 - 200));
+    $("#setMax").value = S.fmax;
+    S.running = true;
+    $("#startPanel").classList.add("hidden");
+    ["#livePanel","#specPanel","#tabs"].forEach(s => $(s).classList.remove("hidden"));
+    if (demo) $("#demoCtl").classList.remove("hidden");
+    $("#status").textContent = (demo ? "simulated · " : "mic on · ") + (S.sr/1000).toFixed(1) + " kHz · " + S.binHz.toFixed(1) + " Hz/bin";
+    wakeLock();
+    resizeAll();
+    if (S.target) setTarget(S.target);
+    setInterval(analyze, 100);
+    requestAnimationFrame(draw);
+  }catch(e){
+    if (ctx) try{ ctx.close(); }catch(_){}
+    const msg = e && e.name === "NotAllowedError"
+      ? "Microphone access was blocked. On iPhone: Settings › Safari › Microphone › Allow (or tap the aA icon in the address bar › Website Settings), then reload."
+      : (e && e.message) || String(e);
+    const box = $("#startErr"); box.textContent = msg; box.classList.remove("hidden");
+  }
+}
+
+function makeDemo(ctx, dest){
+  const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i=0;i<len;i++) d[i] = Math.random()*2-1;
+  const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2500;
+  const ng = ctx.createGain(); ng.gain.value = 0.25;
+  noise.connect(lp).connect(ng).connect(dest);
+  const hiss = ctx.createGain(); hiss.gain.value = 0.004; noise.connect(hiss).connect(dest);
+  const hum = ctx.createOscillator(); hum.frequency.value = 120; const hg = ctx.createGain(); hg.gain.value = 0.03; hum.connect(hg).connect(dest);
+  const osc = ctx.createOscillator(); osc.frequency.value = 15734; const og = ctx.createGain(); og.gain.value = 0.002; osc.connect(og).connect(dest);
+  const h2 = ctx.createOscillator(); h2.frequency.value = 7867; const h2g = ctx.createGain(); h2g.gain.value = 0.0004; h2.connect(h2g).connect(dest);
+  noise.start(); hum.start(); osc.start(); h2.start();
+  setInterval(() => { const df = (Math.random()-.5)*6; osc.frequency.setTargetAtTime(15734+df, ctx.currentTime, .5); h2.frequency.setTargetAtTime(7867+df/2, ctx.currentTime, .5); }, 1500);
+  const setDist = m => { const g = 0.004 / Math.max(.1, m); og.gain.setTargetAtTime(g, ctx.currentTime, .05); h2g.gain.setTargetAtTime(g*.2, ctx.currentTime, .05); };
+  setDist(2);
+  return {setDist};
+}
+
+/* ---------- analysis ---------- */
+function analyze(){
+  if (!S.running) return;
+  const now = Date.now();
+  S.an.getFloatFrequencyData(S.spec);
+  if (now < S.muteUntil) return;
+  const {spec, fast, slow, N} = S;
+  for (let i=0;i<N;i++){
+    let p = Math.pow(10, spec[i]/10); if (!(p > 0)) p = 1e-20;
+    fast[i] = fast[i]*.5 + p*.5;
+    slow[i] = slow[i]*.92 + p*.08;
+  }
+  S.tick++;
+  if (S.tick % 5 === 0) findCands();
+  addWaterfallRow();
+  if (S.target){
+    const m = measure(fast, S.target);
+    S.cur = m;
+    S.hist.push({t:now, lv:m.level, snr:m.snr, f:m.freq, gap:S.gapFlag});
+    S.gapFlag = false;
+    const cutoff = now - 610000; while (S.hist.length && S.hist[0].t < cutoff) S.hist.shift();
+    if (S.rec && S.rec.phase === "rec"){ S.rec.lv.push(m.level); S.rec.snr.push(m.snr); S.rec.f.push(m.freq); }
+  }
+  if (S.rec) updateRec(now);
+  if (S.tick % 10 === 0) renderMarkers();
+}
+
+function measure(arr, f){
+  const b = S.binHz, N = S.N;
+  const c = Math.round(f/b), w = Math.max(2, Math.round(S.trackHz/b));
+  let k = c, mx = -1;
+  for (let i=Math.max(2,c-w); i<=Math.min(N-3,c+w); i++) if (arr[i] > mx){ mx = arr[i]; k = i; }
+  let sum = 0; for (let j=k-2;j<=k+2;j++) sum += arr[j];
+  const inner = Math.max(w+3, Math.round(60/b)), outer = inner + Math.round(250/b), vals = [];
+  for (let j=k-outer;j<=k-inner;j++) if (j>0) vals.push(arr[j]);
+  for (let j=k+inner;j<=k+outer;j++) if (j<N) vals.push(arr[j]);
+  const fl = median(vals) || 1e-20;
+  const level = 10*Math.log10(sum + 1e-20);
+  const floorBand = 10*Math.log10(fl*5 + 1e-20);
+  return {level, snr: level - floorBand, freq: interp(arr, k)};
+}
+function interp(arr, i){
+  const a = 10*Math.log10(arr[i-1]+1e-20), bb = 10*Math.log10(arr[i]+1e-20), c = 10*Math.log10(arr[i+1]+1e-20);
+  const d = a - 2*bb + c; const p = d !== 0 ? .5*(a-c)/d : 0;
+  return (i + Math.max(-.5, Math.min(.5, p))) * S.binHz;
+}
+
+function findCands(){
+  const {slow, N, binHz:b} = S;
+  const lo = Math.max(4, Math.round(S.fmin/b)), hi = Math.min(N-5, Math.round(S.fmax/b));
+  const inner = Math.max(5, Math.round(25/b)), outer = inner + Math.round(250/b);
+  const step = Math.max(1, Math.floor((outer-inner)/40));
+  const out = [];
+  for (let i=lo;i<=hi;i++){
+    const v = slow[i];
+    if (v <= slow[i-1] || v < slow[i+1] || v <= slow[i-2] || v < slow[i+2] || v <= slow[i-3] || v < slow[i+3]) continue;
+    const vals = [];
+    for (let j=inner;j<=outer;j+=step){ if (i-j>0) vals.push(slow[i-j]); if (i+j<N) vals.push(slow[i+j]); }
+    const med = median(vals); if (!med) continue;
+    const prom = 10*Math.log10(v/med);
+    if (prom >= 9) out.push({f: interp(slow, i), prom, lv: 10*Math.log10(v)});
+  }
+  out.sort((x,y) => y.prom - x.prom);
+  const kept = [];
+  for (const c of out){ if (kept.every(k => Math.abs(k.f - c.f) > 30)) kept.push(c); if (kept.length >= 6) break; }
+  for (const c of kept){
+    c.harm = null;
+    for (const o of kept){ if (o === c || o.f >= c.f) continue;
+      const n = Math.round(c.f/o.f); if (n >= 2 && n <= 6 && Math.abs(c.f - n*o.f) < Math.max(4, c.f*.004)){ c.harm = "×" + n + " of " + fmtF(o.f); break; } }
+  }
+  S.cands = kept;
+  renderChips();
+}
+
+function renderChips(){
+  const box = $("#chips");
+  if (!S.cands.length){ box.innerHTML = '<span class="small muted">No clear tones yet in ' + fmtF(S.fmin) + "–" + fmtF(S.fmax) + ".</span>"; return; }
+  box.innerHTML = S.cands.map((c,i) => {
+    const on = S.target && Math.abs(c.f - S.target) <= S.trackHz;
+    return `<button class="chip${on?" on":""}" data-i="${i}">${fmtF(c.f)}<em>+${c.prom.toFixed(0)} dB${c.harm ? " · "+esc(c.harm) : ""}</em></button>`;
+  }).join("");
+}
+$("#chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; const c = S.cands[+b.dataset.i]; if (c) setTarget(c.f); });
+
+function setTarget(f){
+  if (!f || !isFinite(f)) return;
+  if (S.target && Math.abs(S.target - f) > S.trackHz){ S.hist = []; S.markers = []; S.peakLv = -Infinity; renderMarkers(); }
+  S.target = f; saveSettings();
+  $("#btnTone").disabled = !S.running; $("#btnMark").disabled = !S.running; $("#btnRec").disabled = !S.running || !!S.rec;
+  $("#recNeedTarget").classList.add("hidden");
+  renderChips();
+}
+
+/* ---------- drawing ---------- */
+const cv = {spec:$("#spec"), wf:$("#wf"), tl:$("#tl")};
+let dpr = 1, colMap = null;
+function resizeAll(){
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (const k in cv){ const c = cv[k], r = c.getBoundingClientRect(); const w = Math.max(10, Math.round(r.width*dpr)), h = Math.max(10, Math.round(r.height*dpr)); if (c.width !== w || c.height !== h){ c.width = w; c.height = h; } }
+  buildColMap();
+}
+window.addEventListener("resize", resizeAll);
+const FLO = 100;
+function fHi(){ return S.sr/2; }
+function xToF(x, w){ const t = x/w; return S.logScale ? FLO*Math.pow(fHi()/FLO, t) : t*fHi(); }
+function fToX(f, w){ return S.logScale ? Math.log(Math.max(f,FLO)/FLO)/Math.log(fHi()/FLO)*w : f/fHi()*w; }
+function buildColMap(){
+  if (!S.N) return;
+  const w = cv.wf.width; colMap = new Int32Array(w*2);
+  for (let x=0;x<w;x++){ let a = Math.floor(xToF(x,w)/S.binHz), b = Math.floor(xToF(x+1,w)/S.binHz); a = Math.max(1,Math.min(S.N-1,a)); b = Math.max(a,Math.min(S.N-1,b)); colMap[2*x]=a; colMap[2*x+1]=b; }
+}
+// colormap: deep navy -> teal -> amber -> white
+const LUT = (() => { const stops = [[0,[4,8,16]],[.35,[18,70,110]],[.6,[40,170,190]],[.8,[255,180,65]],[1,[255,250,235]]]; const L = new Uint8Array(256*3);
+  for (let i=0;i<256;i++){ const t=i/255; let j=0; while (j<stops.length-2 && t>stops[j+1][0]) j++; const [t0,c0]=stops[j],[t1,c1]=stops[j+1]; const u=(t-t0)/(t1-t0); for(let k=0;k<3;k++) L[i*3+k]=Math.round(c0[k]+(c1[k]-c0[k])*u); } return L; })();
+let dbTop = -40;
+function addWaterfallRow(){
+  if (!colMap) return;
+  const c = cv.wf, g = c.getContext("2d"), w = c.width, h = c.height;
+  g.drawImage(c, 0, 0, w, h-dpr, 0, dpr, w, h-dpr);
+  const row = g.createImageData(w, Math.max(1,Math.round(dpr)));
+  const top = dbTop, range = 70;
+  for (let x=0;x<w;x++){
+    let m = 0; for (let i=colMap[2*x]; i<=colMap[2*x+1]; i++) if (S.fast[i] > m) m = S.fast[i];
+    const db = 10*Math.log10(m+1e-20); let t = (db - (top-range))/range; t = t<0?0:t>1?1:t; const li = Math.round(t*255)*3;
+    for (let y=0;y<row.height;y++){ const o=(y*w+x)*4; row.data[o]=LUT[li]; row.data[o+1]=LUT[li+1]; row.data[o+2]=LUT[li+2]; row.data[o+3]=255; }
+  }
+  g.putImageData(row, 0, 0);
+}
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const COL = {};
+function cols(){ for (const k of ["fg","muted","line","amber","hot","cool","good","bg"]) COL[k] = css("--"+k); }
+cols();
+
+function draw(){
+  if (!S.running) return;
+  drawSpec(); drawTimeline(); renderReadout();
+  requestAnimationFrame(draw);
+}
+function drawSpec(){
+  const c = cv.spec, g = c.getContext("2d"), w = c.width, h = c.height;
+  g.clearRect(0,0,w,h);
+  if (!colMap) return;
+  // autoscale
+  let mx = -200; const lo = Math.round(S.fmin/S.binHz);
+  for (let i=Math.max(1,lo); i<S.N; i++){ const d = 10*Math.log10(S.slow[i]+1e-20); if (d>mx) mx=d; }
+  const want = Math.ceil((mx+6)/5)*5; dbTop = dbTop + (want - dbTop)*.1;
+  const top = dbTop, range = 70, y = d => (top - d)/range*h;
+  // grid
+  g.font = `${11*dpr}px ${css("--mono")}`; g.fillStyle = COL.muted; g.strokeStyle = COL.line; g.lineWidth = 1;
+  const ticks = S.logScale ? [200,500,1000,2000,5000,10000,15000,20000] : [2000,4000,6000,8000,10000,12000,14000,16000,18000,20000,22000];
+  for (const f of ticks){ if (f >= fHi()) continue; const x = Math.round(fToX(f,w))+.5; g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke(); g.fillText(f>=1000?(f/1000)+"k":f, x+3*dpr, h-4*dpr); }
+  // search range shade
+  g.fillStyle = "rgba(0,0,0,.25)";
+  g.fillRect(0,0,fToX(S.fmin,w),h); const xm = fToX(S.fmax,w); g.fillRect(xm,0,w-xm,h);
+  // target band
+  if (S.target){ const a = fToX(S.target - S.trackHz, w), b2 = fToX(S.target + S.trackHz, w); g.fillStyle = "rgba(255,180,65,.18)"; g.fillRect(a,0,Math.max(2*dpr,b2-a),h); }
+  // traces
+  const trace = (arr, color, lw) => { g.strokeStyle = color; g.lineWidth = lw; g.beginPath();
+    for (let x=0;x<w;x++){ let m=0; for (let i=colMap[2*x]; i<=colMap[2*x+1]; i++) if (arr[i]>m) m=arr[i]; const yy = y(10*Math.log10(m+1e-20)); x?g.lineTo(x,yy):g.moveTo(x,yy); } g.stroke(); };
+  trace(S.fast, "rgba(83,182,255,.35)", 1*dpr);
+  trace(S.slow, COL.cool, 1.5*dpr);
+  // candidate markers
+  g.fillStyle = COL.amber;
+  for (const cd of S.cands){ const x = fToX(cd.f,w), yy = Math.max(10*dpr, y(cd.lv) - 6*dpr); g.beginPath(); g.moveTo(x,yy); g.lineTo(x-4*dpr,yy-7*dpr); g.lineTo(x+4*dpr,yy-7*dpr); g.fill(); }
+  g.fillStyle = COL.muted; g.fillText(Math.round(top)+" dB", 4*dpr, 12*dpr);
+}
+function drawTimeline(){
+  const c = cv.tl, g = c.getContext("2d"), w = c.width, h = c.height;
+  g.clearRect(0,0,w,h);
+  g.font = `${11*dpr}px ${css("--mono")}`;
+  const now = Date.now(), t0 = now - S.span*1000;
+  const pts = S.hist.filter(p => p.t >= t0);
+  if (pts.length < 2){ g.fillStyle = COL.muted; g.fillText(S.target ? "Collecting…" : "Lock a tone to start the graph", 10*dpr, 20*dpr); $("#tlRange").textContent=""; return; }
+  let lo = Infinity, hi = -Infinity; for (const p of pts){ if (p.lv<lo) lo=p.lv; if (p.lv>hi) hi=p.lv; }
+  if (hi - lo < 12){ const m = (hi+lo)/2; lo = m-6; hi = m+6; } lo -= 2; hi += 2;
+  const L = 34*dpr, x = t => L + (t - t0)/(S.span*1000)*(w-L-4*dpr), y = v => 6*dpr + (hi - v)/(hi-lo)*(h-22*dpr);
+  // grid
+  g.strokeStyle = COL.line; g.fillStyle = COL.muted; g.lineWidth = 1;
+  const stepDb = (hi-lo) > 40 ? 10 : 5;
+  for (let v = Math.ceil(lo/stepDb)*stepDb; v <= hi; v += stepDb){ const yy = Math.round(y(v))+.5; g.beginPath(); g.moveTo(L,yy); g.lineTo(w,yy); g.stroke(); g.fillText(v, 2*dpr, yy+4*dpr); }
+  const tStep = S.span <= 60 ? 10 : S.span <= 300 ? 60 : 120;
+  for (let s = 0; s <= S.span; s += tStep){ const xx = x(now - s*1000); g.fillText(s ? "-"+(s>=60? (s/60)+"m" : s+"s") : "now", Math.min(w-30*dpr, xx-8*dpr), h-4*dpr); }
+  // area + line
+  const grad = g.createLinearGradient(0,0,0,h); grad.addColorStop(0,"rgba(255,180,65,.35)"); grad.addColorStop(1,"rgba(255,180,65,0)");
+  g.beginPath(); g.moveTo(x(pts[0].t), h-18*dpr); for (const p of pts) g.lineTo(x(p.t), y(p.lv)); g.lineTo(x(pts[pts.length-1].t), h-18*dpr); g.closePath(); g.fillStyle = grad; g.fill();
+  g.beginPath(); pts.forEach((p,i) => i ? g.lineTo(x(p.t),y(p.lv)) : g.moveTo(x(p.t),y(p.lv))); g.strokeStyle = COL.amber; g.lineWidth = 1.5*dpr; g.stroke();
+  // gaps
+  g.fillStyle = COL.hot; for (const p of pts) if (p.gap) g.fillRect(x(p.t)-1*dpr, 0, 2*dpr, h-18*dpr);
+  // markers
+  S.markers.forEach((m,i) => { if (m.t < t0) return; const xx = Math.round(x(m.t))+.5; g.strokeStyle = COL.cool; g.setLineDash([4*dpr,3*dpr]); g.beginPath(); g.moveTo(xx,0); g.lineTo(xx,h-18*dpr); g.stroke(); g.setLineDash([]); g.fillStyle = COL.cool; g.fillText(String(i+1), xx+3*dpr, 12*dpr); });
+  const last = pts[pts.length-1]; g.fillStyle = COL.amber; g.beginPath(); g.arc(x(last.t), y(last.lv), 3*dpr, 0, 7); g.fill();
+  $("#tlRange").textContent = `min ${lo.toFixed(0)} · max ${hi.toFixed(0)} dB`;
+}
+
+let lastReadout = 0;
+function renderReadout(){
+  const now = performance.now(); if (now - lastReadout < 150) return; lastReadout = now;
+  if (!S.target || !S.cur){ $("#lvl").innerHTML = "––<small>dB</small>"; $("#snr").textContent = "–"; $("#meterFill").style.width = "0"; return; }
+  // 1 s average of level for a steadier number
+  const recent = S.hist.slice(-10); const lin = recent.reduce((a,p)=>a+Math.pow(10,p.lv/10),0)/recent.length;
+  const lv = 10*Math.log10(lin), snr = median(recent.map(p=>p.snr)), f = median(recent.map(p=>p.f));
+  if (lv > S.peakLv) S.peakLv = lv;
+  $("#lvl").innerHTML = fmtDb(lv) + "<small>dB</small>";
+  const s = $("#snr"); s.textContent = fmtSigned(snr) + " dB"; s.style.color = snr > 20 ? COL.hot : snr > 10 ? COL.amber : snr > 4 ? COL.fg : COL.muted;
+  $("#tgtLine").innerHTML = `Locked on <b>${fmtHz(f)}</b> · peak so far ${fmtDb(S.peakLv)} dB`;
+  $("#meterFill").style.width = Math.max(0, Math.min(100, snr/40*100)) + "%";
+}
+
+/* ---------- markers (switch-off test) ---------- */
+function windowMedian(t1, t2){ const v = S.hist.filter(p => p.t >= t1 && p.t <= t2).map(p => p.lv); return v.length >= 5 ? median(v) : null; }
+function renderMarkers(){
+  const tb = $("#markTable tbody"); const now = Date.now();
+  if (!S.markers.length){ tb.innerHTML = '<tr><td colspan="5" class="muted small">No marks yet.</td></tr>'; return; }
+  tb.innerHTML = S.markers.map((m,i) => {
+    const before = windowMedian(m.t - 10000, m.t - 500);
+    const after = now >= m.t + 12000 ? windowMedian(m.t + 2000, m.t + 12000) : null;
+    const d = before != null && after != null ? after - before : null;
+    const cls = d == null ? "" : d < -3 ? "delta-down" : d > 3 ? "delta-up" : "";
+    return `<tr><td>${i+1}. ${esc(m.label)}</td><td class="num">${clock(m.t)}</td><td class="num">${fmtDb(before)}</td><td class="num">${after==null?'<span class="muted">wait…</span>':fmtDb(after)}</td><td class="num ${cls}">${d==null?"":fmtSigned(d)+" dB"}</td></tr>`;
+  }).join("");
+}
+$("#btnMark").addEventListener("click", () => {
+  const inp = $("#markLabel"); S.markers.push({t: Date.now(), label: inp.value.trim() || "Mark " + (S.markers.length+1)}); inp.value = ""; renderMarkers();
+});
+renderMarkers();
+
+/* ---------- logging ---------- */
+$("#btnRec").addEventListener("click", () => {
+  if (!S.target) return;
+  const name = $("#locName").value.trim() || "Spot " + (results.length + 1);
+  S.rec = {name, dur: +$("#recDur").value, phase:"count", tc: Date.now(), t0:0, lv:[], snr:[], f:[], gap:false, target:S.target};
+  $("#btnRec").classList.add("hidden"); $("#btnRecStop").classList.remove("hidden"); $("#recBox").classList.remove("hidden");
+});
+$("#btnRecStop").addEventListener("click", () => finishRec(true));
+function updateRec(now){
+  const r = S.rec;
+  if (r.phase === "count"){
+    const left = 5 - Math.floor((now - r.tc)/1000);
+    $("#recMsg").textContent = `Starting in ${left} s — step away`; $("#recFill").style.width = "0";
+    if (left <= 0){ r.phase = "rec"; r.t0 = now; }
+    return;
+  }
+  const el = (now - r.t0)/1000;
+  $("#recMsg").textContent = `● ${esc(r.name)} · ${Math.floor(el)} / ${r.dur} s`;
+  $("#recFill").style.width = Math.min(100, el/r.dur*100) + "%";
+  if (r.lv.length) $("#recStats").textContent = `median ${fmtDb(median(r.lv.slice(-600)))} dB`;
+  if (el >= r.dur) finishRec(false);
+}
+function finishRec(stopped){
+  const r = S.rec; S.rec = null;
+  $("#btnRec").classList.remove("hidden"); $("#btnRecStop").classList.add("hidden");
+  $("#btnRec").disabled = !S.target;
+  if (!r || r.phase !== "rec" || r.lv.length < 20){ $("#recMsg").textContent = "Cancelled (too short to save)"; $("#recStats").textContent = ""; return; }
+  const res = {
+    id: Date.now().toString(36), name: r.name, when: r.t0, secs: Math.round(r.lv.length/10),
+    target: r.target, freq: median(r.f), med: median(r.lv), p10: pct(r.lv,.1), p90: pct(r.lv,.9), max: Math.max(...r.lv),
+    snr: median(r.snr), gap: r.gap, stopped
+  };
+  results.push(res); save(LS_RES, results);
+  $("#recMsg").textContent = `Saved “${r.name}”: median ${fmtDb(res.med)} dB, ${fmtSigned(res.snr)} dB above background`;
+  $("#recStats").textContent = "";
+  $("#locName").value = "";
+  renderResults();
+}
+
+/* ---------- results ---------- */
+function groups(){
+  const gs = [];
+  for (const r of results){ let g = gs.find(g => Math.abs(g.target - r.target) <= Math.max(40, r.target*.005)); if (!g){ g = {target:r.target, items:[]}; gs.push(g); } g.items.push(r); }
+  gs.sort((a,b) => b.items.length - a.items.length);
+  return gs;
+}
+function renderResults(){
+  const box = $("#resultsBody");
+  if (!results.length){ box.innerHTML = '<p class="muted small">No spots recorded yet. Use <b>Log spots</b> to leave the phone on a shelf for a couple of minutes; each spot then shows up here, ranked by how loud the locked tone was.</p>'; return; }
+  box.innerHTML = groups().map(g => {
+    const items = g.items.slice().sort((a,b) => b.med - a.med);
+    const quiet = Math.min(...items.map(r => r.med)), loud = Math.max(...items.map(r => r.med)), span = Math.max(6, loud - quiet);
+    return `<h3>Tone near ${fmtHz(g.target)} <span class="badge">${items.length} spot${items.length>1?"s":""}</span></h3>
+    <div class="tablewrap"><table><thead><tr><th>Spot</th><th class="num">Median</th><th class="num">vs quietest</th><th class="num">Above bkgnd</th><th style="width:22%"></th><th></th></tr></thead><tbody>
+    ${items.map(r => `<tr>
+      <td>${esc(r.name)}<div class="small muted">${new Date(r.when).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${r.secs}s${r.gap?' · <span style="color:var(--hot)">had a gap</span>':""}</div></td>
+      <td class="num">${fmtDb(r.med)}</td>
+      <td class="num">${fmtSigned(r.med - quiet)}</td>
+      <td class="num">${fmtSigned(r.snr)}</td>
+      <td><div class="bar" style="width:${Math.max(3,(r.med - quiet)/span*100)}%;${r.med===loud?"":"opacity:.55"}"></div></td>
+      <td><button class="small" data-del="${r.id}" aria-label="Delete ${esc(r.name)}">✕</button></td></tr>`).join("")}
+    </tbody></table></div>`;
+  }).join("");
+}
+$("#resultsBody").addEventListener("click", e => { const b = e.target.closest("[data-del]"); if (!b) return; results = results.filter(r => r.id !== b.dataset.del); save(LS_RES, results); renderResults(); });
+function csv(){
+  const head = ["spot","date_time","seconds","locked_hz","measured_hz","median_db","p10_db","p90_db","max_db","above_background_db","gap"];
+  const q = s => '"' + String(s).replace(/"/g,'""') + '"';
+  return [head.join(",")].concat(results.map(r => [q(r.name), q(new Date(r.when).toISOString()), r.secs, r.target.toFixed(1), r.freq.toFixed(1), r.med.toFixed(1), r.p10.toFixed(1), r.p90.toFixed(1), r.max.toFixed(1), r.snr.toFixed(1), r.gap?"yes":"no"].join(","))).join("\n");
+}
+$("#btnExport").addEventListener("click", async () => {
+  const msg = $("#exportMsg"); if (!results.length){ msg.textContent = "Nothing to export yet."; return; }
+  const name = "whine-finder-" + new Date().toISOString().slice(0,10) + ".csv";
+  const file = new File([csv()], name, {type:"text/csv"});
+  try{
+    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:"Whine Finder results"}); msg.textContent = "Shared."; return; }
+  }catch(e){ if (e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  msg.textContent = "Saved " + name + ".";
+});
+$("#btnCopy").addEventListener("click", async () => {
+  const msg = $("#exportMsg");
+  try{ await navigator.clipboard.writeText(csv()); msg.textContent = "Copied. Paste into a message or spreadsheet."; }
+  catch(e){ msg.textContent = "Copy didn't work in this browser. Use Share CSV instead."; }
+});
+$("#btnClear").addEventListener("click", () => { if (!results.length) return; $("#btnClear").classList.add("hidden"); $("#btnClearYes").classList.remove("hidden"); setTimeout(() => { $("#btnClear").classList.remove("hidden"); $("#btnClearYes").classList.add("hidden"); }, 5000); });
+$("#btnClearYes").addEventListener("click", () => { results = []; save(LS_RES, results); renderResults(); $("#btnClear").classList.remove("hidden"); $("#btnClearYes").classList.add("hidden"); });
+renderResults();
+
+/* ---------- controls ---------- */
+$("#btnStart").addEventListener("click", () => start(false));
+$("#btnDemo").addEventListener("click", () => start(true));
+$("#dist").addEventListener("input", e => { const m = +e.target.value; $("#distV").textContent = m.toFixed(1) + " m"; S.demo && S.demo.setDist(m); });
+$("#btnScale").addEventListener("click", () => { S.logScale = !S.logScale; $("#btnScale").textContent = S.logScale ? "Linear scale" : "Log scale"; buildColMap(); const c = cv.wf; c.getContext("2d").clearRect(0,0,c.width,c.height); });
+$$(".tabs button").forEach(b => b.addEventListener("click", () => {
+  $$(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b ? "true" : "false"));
+  $$(".tab").forEach(t => t.classList.toggle("hidden", t.id !== "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "results") renderResults();
+  requestAnimationFrame(resizeAll);
+}));
+$$("[data-span]").forEach(b => b.addEventListener("click", () => { S.span = +b.dataset.span; }));
+function pickTarget(e, canvas){
+  if (!S.running) return;
+  const r = canvas.getBoundingClientRect(); const f = xToF((e.clientX - r.left)*dpr, canvas.width);
+  let best = null, bd = Infinity;
+  for (const c of S.cands){ const d = Math.abs(Math.log(c.f/f)); if (d < bd){ bd = d; best = c; } }
+  if (best && bd < .04) return setTarget(best.f);
+  // otherwise snap to the strongest bin within ±1.5 %
+  const a = Math.max(1, Math.floor(f*.985/S.binHz)), b = Math.min(S.N-2, Math.ceil(f*1.015/S.binHz)); let k = a;
+  for (let i=a;i<=b;i++) if (S.slow[i] > S.slow[k]) k = i;
+  setTarget(interp(S.slow, k));
+}
+cv.spec.addEventListener("click", e => pickTarget(e, cv.spec));
+cv.wf.addEventListener("click", e => pickTarget(e, cv.wf));
+$("#btnTone").addEventListener("click", () => {
+  if (!S.ctx || !S.target) return;
+  const o = S.ctx.createOscillator(), g = S.ctx.createGain(), t = S.ctx.currentTime;
+  o.frequency.value = S.target; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.08, t+.05); g.gain.setValueAtTime(.08, t+1.4); g.gain.linearRampToValueAtTime(0, t+1.5);
+  o.connect(g).connect(S.ctx.destination); o.start(t); o.stop(t+1.55);
+  S.muteUntil = Date.now() + 1900; // don't measure our own beep
+});
+function applySettings(){
+  const mn = +$("#setMin").value, mx = +$("#setMax").value, tr = +$("#setTrack").value;
+  if (mn > 0) S.fmin = mn; if (mx > S.fmin) S.fmax = Math.min(mx, S.sr/2 - 100); if (tr >= 3 && tr <= 500) S.trackHz = tr;
+  saveSettings();
+}
+["#setMin","#setMax","#setTrack"].forEach(s => $(s).addEventListener("change", applySettings));
+$("#btnSetTarget").addEventListener("click", () => { const f = +$("#setTarget").value; if (f > 20 && f < S.sr/2) setTarget(f); });
+
+/* ---------- keep awake / interruptions ---------- */
+async function wakeLock(){ try{ if ("wakeLock" in navigator) S.wake = await navigator.wakeLock.request("screen"); }catch(e){} }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible"){ if (S.running){ S.ctx && S.ctx.resume(); wakeLock(); S.gapFlag = true; } }
+  else if (S.rec && S.rec.phase === "rec") S.rec.gap = true;
+});
+})();
+</script>
+</body>
+</html>
